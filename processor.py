@@ -5,6 +5,11 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+
+# Prevent Windows from showing a separate console for each FFmpeg process.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 @dataclass(frozen=True)
 class ProcessResult:
     source: str
@@ -17,6 +22,7 @@ def ffprobe_duration(source: str, ffprobe: str = "ffprobe") -> float:
         capture_output=True,
         text=True,
         check=True,
+        creationflags=NO_WINDOW,
     )
     return float(json.loads(result.stdout)["format"]["duration"])
 
@@ -42,6 +48,7 @@ def cut_video(source: str, output_dir: str, clip_length: float,
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            creationflags=NO_WINDOW,
         )
         clips.append(str(output))
         if progress:
