@@ -1,11 +1,15 @@
 import sys
+from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication, QAbstractItemView, QDoubleSpinBox, QFileDialog,
     QHBoxLayout, QLabel, QListWidget, QMainWindow, QMessageBox,
     QProgressBar, QPushButton, QVBoxLayout, QWidget,
 )
+
+from core import Clip, shuffle_clips
+from processor import cut_video
 
 
 class MainWindow(QMainWindow):
@@ -51,9 +55,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self.output_dir = ""
+        self.generated: list[Clip] = []
         self.add_button.clicked.connect(self.choose_files)
         self.output_button.clicked.connect(self.choose_output)
         self.remove_button.clicked.connect(self.remove_selected)
+        self.cut_button.clicked.connect(self.cut_all)
+        self.shuffle_button.clicked.connect(self.shuffle_all)
 
     def choose_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(
@@ -73,6 +80,43 @@ class MainWindow(QMainWindow):
     def remove_selected(self) -> None:
         for item in self.files.selectedItems():
             self.files.takeItem(self.files.row(item))
+
+    def cut_all(self) -> None:
+        if self.files.count() == 0:
+            QMessageBox.warning(self, "Cutter", "Добавьте хотя бы одно видео")
+            return
+        if not self.output_dir:
+            QMessageBox.warning(self, "Cutter", "Выберите папку сохранения")
+            return
+
+        self.generated = []
+        files = [self.files.item(i).text() for i in range(self.files.count())]
+        total = len(files)
+        for file_index, source in enumerate(files, start=1):
+            try:
+                result = cut_video(source, self.output_dir, self.length.value())
+                self.generated.extend(Clip(source, path) for path in result.clips)
+                self.progress.setValue(int(file_index * 100 / total))
+                QApplication.processEvents()
+            except Exception as error:
+                QMessageBox.critical(self, "Ошибка", f"Не удалось обработать:\n{source}\n\n{error}")
+                return
+
+        QMessageBox.information(self, "Готово", f"Нарезано фрагментов: {len(self.generated)}")
+
+    def shuffle_all(self) -> None:
+        if not self.generated:
+            QMessageBox.warning(self, "Cutter", "Сначала выполните нарезку")
+            return
+
+        shuffled = shuffle_clips(self.generated)
+        folder = Path(self.output_dir) / "shuffled"
+        folder.mkdir(parents=True, exist_ok=True)
+        for index, clip in enumerate(shuffled, start=1):
+            target = folder / f"clip_{index:05d}.mp4"
+            Path(clip.path).replace(target)
+
+        QMessageBox.information(self, "Готово", f"Перемешано: {len(shuffled)} фрагментов")
 
 
 def main() -> None:
